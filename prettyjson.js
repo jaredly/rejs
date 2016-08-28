@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 'use strict'
 
-const babylon = require('babylon')
-const fs = require('fs')
-
 var readStdin = done => {
   if (process.argv.length > 2) {
     return done(process.argv[2])
@@ -24,6 +21,6 @@ var readStdin = done => {
 }
 
 readStdin(text => {
-  const ast = babylon.parse(text)
-  console.log(JSON.stringify(ast))
+  console.log(JSON.stringify(JSON.parse(text), null, 2))
 })
+
