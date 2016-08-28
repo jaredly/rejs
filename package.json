@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "babylon": "^6.9.1"
+  }
+}
