@@ -10,6 +10,18 @@ $ ./run.sh 'alert("hello world")'
 alert "hello world";
 ```
 
+## Setup
+You need `Reason` with [this PR applied](https://github.com/facebook/reason/pull/724), built in a directory
+adjacent to where you have this repo.
+e.g.
+
+```
+git clone https://github.com/jaredly/Reason
+(cd Reason; git checkout astjson; make)
+git clone https://github.com/jaredly/rejs
+cd rejs
+```
+
 ## How to contribute
 Lots of AST forms haven't been processed yet.
 
