@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict'
 
+const {noLoc} = require('./consts.js')
+
 var babylon = require('babylon')
 const jsItemToRe = require('./js-item-to-re.js')
 

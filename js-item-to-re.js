@@ -1,3 +1,4 @@
+const {noPos, noLoc, patNull, expNull} = require('./consts.js')
 
 function fail(err) {
   throw new Error(err)
@@ -26,11 +27,6 @@ function funShell(arg, body) {
     pexp_attributes: [],
   }]
 }
-
-const noPos = {pos_fname: 'hah', pos_lnum: 0, pos_cnum: 0, pos_bol: 0}
-const noLoc = {loc_start: noPos, loc_end: noPos, loc_ghost: false}
-const patNull = ['Ppat_construct', {txt: ['Lident', '()'], loc: noLoc}, null]
-const expNull = ['Pexp_construct', {txt: ['Lident', '()'], loc: noLoc}, null]
 
 var jsByTag = {
   Identifier: ({name}) => [
@@ -267,3 +263,4 @@ function jsItemToRe(item, isTopLevel) {
   return jsByTag[item.type](item, isTopLevel)
 }
 
+module.exports = jsItemToRe;
