@@ -30,13 +30,14 @@ You may want to port a library into `Reason` if:
 - You want your library to run in as many environments as possible, with the best performance possible for each environment. A library written in `Reason` has strictly more options for deployment and performance outcomes. For example, you may compile your `Reason` library as a native binary, running without a VM for maximum performance, but you may also compile that same library to `JavaScript` - you don't have to choose up front.
 
 ## Setup
-You need `Reason` with [this PR applied](https://github.com/facebook/reason/pull/724), built in a directory
-adjacent to where you have this repo.
+You need `Reason` with [this PR applied](https://github.com/facebook/reason/pull/755), built in a directory
+adjacent to where you have this repo. You'll clone `Reason` and checkout the `JsonSupport` branch which has that PR applied.
 e.g.
 
+**Make sure you've pinned all the required packages mentioned in the [Contributing To Development](https://github.com/facebook/reason#install-stable) section of the Reason README**
 ```
-git clone https://github.com/jaredly/Reason
-(cd Reason; git checkout astjson; make)
+git clone https://github.com/facebook/Reason
+(cd Reason; git checkout JsonSupport; make)
 git clone https://github.com/jaredly/rejs
 cd rejs
 ```
