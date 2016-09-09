@@ -25,6 +25,10 @@ var readStdin = done => {
   });
 }
 
+function injectPreludeOpener() {
+  return {pstr_desc:['Pstr_open',{popen_lid:{txt:['Lident','ReJsPrelude'], loc:noLoc},popen_override:['Fresh'],popen_loc:noLoc,popen_attributes:[]}],pstr_loc:noLoc};
+}
+
 // TODO remove (unused)
 function renderDecl(declarations) {
   return declarations.map(({id, init, kind}) => ({
@@ -44,7 +48,12 @@ function renderDecl(declarations) {
 }
 
 function jsToRe(js) {
-  return [js.program.body.map(item => ({pstr_desc: jsItemToRe(item, true), pstr_loc: noLoc})), []] // no comments for now
+  return [
+    [injectPreludeOpener()].concat(
+      js.program.body.map(item => ({pstr_desc: jsItemToRe(item, true), pstr_loc: noLoc}))
+    ),
+    []
+  ];
 }
 
 readStdin(text => {
