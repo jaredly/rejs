@@ -2,6 +2,8 @@ const {noPos, noLoc, patNull, expNull} = require('./consts.js')
 
 let fail = null;
 
+let arraysAsLists = true;
+
 function statement(body, isTopLevel) {
   return isTopLevel ? [
     'Pstr_eval',
@@ -48,6 +50,7 @@ var jsOperatorToMlMap = {
   '!==': '!=',
   '!=': '!='
 };
+
 var jsOperatorToMlAst = (jsOp) => {
   return jsOperatorToMlMap[jsOp] || jsOp;
 };
@@ -271,7 +274,8 @@ var jsByTag = {
   ArrowFunctionExpression: functionToReason,
   YieldExpression: fail,
   AwaitExpression: fail,
-  ArrayExpression: fail,
+
+  ArrayExpression: e => fail,
   ObjectExpression: e => {
     let propertyToRecordField = (property) => {
       let keyName = property.key.type === 'Identifier' ?
@@ -294,7 +298,16 @@ var jsByTag = {
   RestProperty: fail,
   SpreadProperty: fail,
   FunctionExpression: functionToReason,
-  UnaryExpression: fail,
+  UnaryExpression: (e, isTopLevel) => {
+    return [
+      'Pexp_apply',
+      wrapExprDesc([
+        'Pexp_ident',
+        lidentLoc(jsOperatorToMlAst(e.operator))
+      ]),
+      applicationArgs([e.argument])
+    ];
+  },
   UpdateExpression: e => {
     // x++ becomes x.contents = x.contents + 1
     let reasonOperationIdent =
