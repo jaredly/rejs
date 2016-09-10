@@ -4,6 +4,46 @@ let fail = null;
 
 let arraysAsLists = true;
 
+var lidentLoc = (name) => {
+  return {txt: ['Lident', name], loc: noLoc};
+};
+let Pexp_construct = (constructorName, optionalExpression) => [
+  'Pexp_construct',
+  lidentLoc(constructorName),
+  optionalExpression == null ? null : optionalExpression
+];
+
+
+let Pexp_tuple = (lst) => ['Pexp_tuple', lst];
+
+let nil = Pexp_construct('[]', null);
+
+let cons = (hd, tl) => {
+  return Pexp_construct(
+    '::',
+    expression(Pexp_tuple([hd, tl]))
+  );
+};
+
+
+let List = {
+  length: (lst) => lst.length,
+  hd: (lst) => lst[0],
+  tl: (lst) => {
+    return lst.length === 0 ?
+      fail('Cannot take tail of zero len list') :
+      lst.slice(1);
+  }
+};
+
+let jsArrayToReasonList = (lst) => {
+  return (List.length(lst) == 0) ? nil :
+    cons(
+      expression(jsItemToRe(List.hd(lst))),
+      expression(jsArrayToReasonList(List.tl(lst)))
+    );
+};
+
 function statement(body, isTopLevel) {
   return isTopLevel ? [
     'Pstr_eval',
@@ -79,9 +119,6 @@ var explictArityify = (tuple) => {
   };
 };
 
-var lidentLoc = (name) => {
-  return {txt: ['Lident', name], loc: noLoc};
-};
 
 let expression = (exprDesc) => ({
   pexp_desc: exprDesc,
@@ -275,7 +312,7 @@ var jsByTag = {
   YieldExpression: fail,
   AwaitExpression: fail,
 
-  ArrayExpression: e => fail,
+  ArrayExpression: e => jsArrayToReasonList(e.elements),
   ObjectExpression: e => {
     let propertyToRecordField = (property) => {
       let keyName = property.key.type === 'Identifier' ?
