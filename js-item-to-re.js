@@ -83,7 +83,7 @@ var lidentLoc = (name) => {
   return {txt: ['Lident', name], loc: noLoc};
 };
 
-let wrapExprDesc = (exprDesc) => ({
+let expression = (exprDesc) => ({
   pexp_desc: exprDesc,
   pexp_loc: noLoc,
   pexp_attributes: []
@@ -166,9 +166,9 @@ var jsByTag = {
   // TODO handle early return in if statement -- convert to else?
   IfStatement: ({test, consequent, alternate}, isTopLevel) => statement([
     'Pexp_ifthenelse',
-    wrapExprDesc(jsItemToRe(test)),
-    wrapExprDesc(jsItemToRe(consequent)),
-    alternate ? wrapExprDesc(jsItemToRe(alternate)) : null,
+    expression(jsItemToRe(test)),
+    expression(jsItemToRe(consequent)),
+    alternate ? expression(jsItemToRe(alternate)) : null,
   ], isTopLevel),
   SwitchStatement: fail,
   SwitchCase: fail,
@@ -192,7 +192,7 @@ var jsByTag = {
       };
     return [
       'Pexp_apply',
-      wrapExprDesc(['Pexp_ident', lidentLoc('raise')]),
+      expression(['Pexp_ident', lidentLoc('raise')]),
       [
         ["", thingToRaise]
       ]
@@ -203,8 +203,8 @@ var jsByTag = {
   WhileStatement: (e, isTopLevel) => {
     return statement([
       'Pexp_while',
-      wrapExprDesc(jsItemToRe(e.test)),
-      wrapExprDesc(jsItemToRe(e.body))
+      expression(jsItemToRe(e.test)),
+      expression(jsItemToRe(e.body))
     ], isTopLevel);
   },
   DoWhileStatement: fail,
@@ -283,7 +283,7 @@ var jsByTag = {
         'unsupportedProperty';
       return [
         lidentLoc(keyName),
-        wrapExprDesc(jsItemToRe(property.value))
+        expression(jsItemToRe(property.value))
       ];
     };
     return [
@@ -301,7 +301,7 @@ var jsByTag = {
   UnaryExpression: (e, isTopLevel) => {
     return [
       'Pexp_apply',
-      wrapExprDesc([
+      expression([
         'Pexp_ident',
         lidentLoc(jsOperatorToMlAst(e.operator))
       ]),
@@ -316,17 +316,17 @@ var jsByTag = {
     if (reasonOperationIdent === null) {
       throw new Error('Cannot determine update identifier');
     }
-    let operand = wrapExprDesc(jsItemToRe(e.argument));
+    let operand = expression(jsItemToRe(e.argument));
     return [
       'Pexp_setfield',
       operand,
       lidentLoc('contents'),
-      wrapExprDesc([
+      expression([
         'Pexp_apply',
-        wrapExprDesc(['Pexp_ident', reasonOperationIdent]),
+        expression(['Pexp_ident', reasonOperationIdent]),
         [
-          ["", wrapExprDesc(['Pexp_field', operand, lidentLoc('contents')])],
-          ["", wrapExprDesc(['Pexp_constant', ['Const_int', 1]])]
+          ["", expression(['Pexp_field', operand, lidentLoc('contents')])],
+          ["", expression(['Pexp_constant', ['Const_int', 1]])]
         ]
       ])
     ];
@@ -386,7 +386,7 @@ var jsByTag = {
   ConditionalExpression: (e) => {
     return [
       'Pexp_match',
-      wrapExprDesc(jsItemToRe(e.test)),
+      expression(jsItemToRe(e.test)),
       [
         {
           "pc_lhs":{
@@ -395,7 +395,7 @@ var jsByTag = {
             "ppat_attributes":[]
           },
           "pc_guard":null,
-          "pc_rhs": wrapExprDesc(jsItemToRe(e.consequent))
+          "pc_rhs": expression(jsItemToRe(e.consequent))
         },
         {
           "pc_lhs":{
@@ -404,7 +404,7 @@ var jsByTag = {
             "ppat_attributes":[]
           },
           "pc_guard":null,
-          "pc_rhs": wrapExprDesc(jsItemToRe(e.alternate))
+          "pc_rhs": expression(jsItemToRe(e.alternate))
         }
       ]
     ]
