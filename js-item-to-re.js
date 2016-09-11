@@ -87,6 +87,24 @@ var functionToReason = ({body, params}) => {
   return bod
 };
 
+let functionDeclarationToVariableBinding = (e) => {
+  let name = e.id.name;
+  return {
+    type: 'VariableDeclaration',
+    start: 0,
+    end: 0,
+    loc: null,
+    declarations: [
+      {
+        type: 'VariableDeclarator',
+        id: {name: name},
+        init: {type: 'ArrowFunctionExpression', body: e.body, params: e.params},
+        kind: null
+      }
+    ]
+  };
+};
+
 
 var jsOperatorToMlMap = {
   // Js tripple equal is Reason tripple equal (ml double equal).
@@ -177,11 +195,14 @@ var jsByTag = {
     if (!body.length) return expNull;
     let res = jsItemToRe(body[body.length - 1])
     for (let i=body.length - 2; i>=0; i--) {
-      if (body[i].type === 'VariableDeclaration') {
+      if (body[i].type === 'VariableDeclaration' || body[i].type === 'FunctionDeclaration') {
+        let normalizedBody = (body[i].type === 'FunctionDeclaration') ?
+          functionDeclarationToVariableBinding(body[i]) :
+          body[i];
         res = [
           'Pexp_let',
           ['Nonrecursive'],
-          body[i].declarations.map(jsItemToRe),
+          normalizedBody.declarations.map(jsItemToRe),
           {pexp_desc: res, pexp_loc: noLoc, pexp_attributes: []},
         ]
       } else {
@@ -261,20 +282,7 @@ var jsByTag = {
    */
   FunctionDeclaration: (e, isTopLevel) => {
     let name = e.id.name;
-    let fakeVariableDecl = {
-      type: 'VariableDeclaration',
-      start: 0,
-      end: 0,
-      loc: null,
-      declarations: [
-        {
-          type: 'VariableDeclarator',
-          id: {name: name},
-          init: {type: 'ArrowFunctionExpression', body: e.body, params: e.params},
-          kind: null
-        }
-      ]
-    };
+    let fakeVariableDecl = functionDeclarationToVariableBinding(e);
     return jsItemToRe(fakeVariableDecl, isTopLevel);
   },
 
