@@ -14,6 +14,13 @@ let Pexp_construct = (constructorName, optionalExpression) => [
 ];
 
 
+
+let Pexp_ident = (lidentLoc) => [
+  'Pexp_ident',
+  lidentLoc
+];
+
+
 let Pexp_tuple = (lst) => ['Pexp_tuple', lst];
 
 let nil = Pexp_construct('[]', null);
@@ -375,8 +382,9 @@ var jsByTag = {
   }),
   AssignmentExpression: ({left, right, operator}) => operator === '=' ?
   (left.type === 'Identifier' ? [
-    'Pexp_setinstvar',
-    {txt: left.name, loc: noLoc},
+    'Pexp_setfield',
+    expression(Pexp_ident(lidentLoc(left.name))),
+    lidentLoc('contents'),
     {pexp_desc: jsItemToRe(right), pexp_loc: noLoc, pexp_attributes: []},
   ] : (left.type === 'MemberExpression' ? [
     'Pexp_setfield',
