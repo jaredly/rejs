@@ -24,6 +24,7 @@ let Pexp_ident = (lidentLoc) => [
 let Pexp_tuple = (lst) => ['Pexp_tuple', lst];
 
 let nil = Pexp_construct('[]', null);
+let unit = Pexp_construct('()', null);
 
 let cons = (hd, tl) => {
   return Pexp_construct(
@@ -483,7 +484,7 @@ var jsByTag = {
       pexp_loc: noLoc,
       pexp_attributes: []
     },
-    applicationArgs(arguments)
+    arguments.length > 0 ? applicationArgs(arguments) : [["", expression(unit)]]
   ],
 
   NewExpression: (e) => {
