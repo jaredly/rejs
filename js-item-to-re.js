@@ -386,11 +386,24 @@ var jsByTag = {
     expression(Pexp_ident(lidentLoc(left.name))),
     lidentLoc('contents'),
     {pexp_desc: jsItemToRe(right), pexp_loc: noLoc, pexp_attributes: []},
-  ] : (left.type === 'MemberExpression' ? [
+  ] : (left.type === 'MemberExpression' && !left.computed ? [
     'Pexp_setfield',
     {pexp_desc: jsItemToRe(left.object), pexp_loc: noLoc, pexp_attributes: []},
     {txt: ['Lident', left.property.name], loc: noLoc},
     {pexp_desc: jsItemToRe(right), pexp_loc: noLoc, pexp_attributes: []},
+  ] : (left.type === 'MemberExpression' && left.computed) ? [
+    /* TODO: Perform basic type inference to determine if this is an array
+     * update or a hash table update */
+      'Pexp_apply',
+      {
+        pexp_desc: [
+          'Pexp_ident',
+          {txt: ['Ldot', ['Lident', 'Array'], 'set'], loc: noLoc}
+        ],
+        pexp_loc: noLoc,
+        pexp_attributes: []
+      },
+      applicationArgs([left.object, left.property, right])
   ] : fail("Cannot assign much"))) : (
     jsItemToRe({
       type: 'CallExpression',
