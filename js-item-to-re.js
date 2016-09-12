@@ -44,10 +44,16 @@ let Pexp_ident = (lidentLoc) => [
 let Pexp_field = (exprDesc, lidentLoc) => {
   return [
     "Pexp_field",
-    expression(exprDesc),
+    (exprDesc),
     lidentLoc
   ];
 };
+
+let expression = (exprDesc) => ({
+  pexp_desc: exprDesc,
+  pexp_loc: noLoc,
+  pexp_attributes: []
+});
 
 let Pexp_ifthenelse = (test, consequent, alternate) => [
   'Pexp_ifthenelse',
@@ -58,13 +64,15 @@ let Pexp_ifthenelse = (test, consequent, alternate) => [
 
 let Pexp_tuple = (lst) => ['Pexp_tuple', lst];
 
-let nil = Pexp_construct(lidentLoc('[]'), null);
-let unit = Pexp_construct(lidentLoc('()'), null);
+let nil = expression(Pexp_construct(lidentLoc('[]'), null));
+let unit = expression(Pexp_construct(lidentLoc('()'), null));
 
 let cons = (hd, tl) => {
-  return Pexp_construct(
-    lidentLoc('::'),
-    expression(Pexp_tuple([hd, tl]))
+  return expression(
+    Pexp_construct(
+      lidentLoc('::'),
+      expression(Pexp_tuple([hd, tl]))
+    )
   );
 };
 
@@ -82,13 +90,13 @@ let ArrList = {
 let jsArrayToReasonList = (env, lst) => {
   return (ArrList.length(lst) == 0) ? nil :
     cons(
-      expression(compile(env, ArrList.hd(lst))),
-      expression(jsArrayToReasonList(env, ArrList.tl(lst)))
+      compile(env, ArrList.hd(lst)),
+      (jsArrayToReasonList(env, ArrList.tl(lst)))
     );
 };
 
 let onlyIfNotReturned = (e) => {
-  return Pexp_ifthenelse(
+  return expression(Pexp_ifthenelse(
     expression([
       "Pexp_apply",
       expression(Pexp_ident(lidentLoc(jsOperatorToMlMap("===")))),
@@ -97,15 +105,15 @@ let onlyIfNotReturned = (e) => {
         ["", expression(Pexp_construct(lidentLoc("None"), null))]
       ]
     ]),
-    expression(e),
+    e,
     expression(Pexp_field(expression(Pexp_ident(lidentLoc("retVal"))), lidentLoc("contents")))
-  );
+  ));
 };
 
-function statement(env, body) {
+function potentiallyStructureEval(env, body) {
   return env.isTopLevel ? [
     'Pstr_eval',
-    expression(body),
+    (body),
     [] // attributes
   ] : body
 }
@@ -120,17 +128,17 @@ function funShell(arg, body) {
       ppat_loc: noLoc,
       ppat_attributes: [],
     },
-    expression(body)
+    (body)
   ];
 }
 
 var functionToReason = (env, {body, params}) => {
   let bod = compile(env, body);
   if (!params.length) {
-    return funShell(patNull, bod)
+    return expression(funShell(patNull, bod))
   }
   for (let i=params.length - 1; i>=0; i--) {
-    bod = funShell(['Ppat_var', {txt: params[i].name, loc: noLoc}], bod)
+    bod = expression(funShell(['Ppat_var', {txt: params[i].name, loc: noLoc}], bod))
   }
 
   return bod
@@ -171,14 +179,8 @@ var jsOperatorToMlAst = (jsOp) => {
 
 var tuple = (env, args) => expression([
   'Pexp_tuple',
-  args.map((arg) => expression(compile(env, arg)))
+  args.map((arg) => (compile(env, arg)))
 ]);
-
-let expression = (exprDesc) => ({
-  pexp_desc: exprDesc,
-  pexp_loc: noLoc,
-  pexp_attributes: []
-});
 
 var variant = (env, name, args) => {
   var variantName = name.charAt(0).toUpperCase() + name.substr(1);
@@ -188,28 +190,30 @@ var variant = (env, name, args) => {
 var applicationArgs = (env, args) =>
     args.map(arg => [
       "",
-      expression(compile(env, arg))
+      (compile(env, arg))
     ]);
 
 var jsByTag = {
-  Identifier: (env, {name}) => [
+  Identifier: (env, {name}) => expression([
     'Pexp_ident',
     {
       txt: ['Lident', name],
       loc: noLoc
     }
-  ],
+  ]),
 
-  NullLiteral: (env) => ['Pexp_construct', {txt: ['Lident', '()'], loc: noLoc}, null],
-  StringLiteral: (env, {value}) => ['Pexp_constant', ['Const_string', value, null]],
-  NumericLiteral: (env, {value}) => ['Pexp_constant', ['Const_int', value]],
+  NullLiteral: (env) => expression(['Pexp_construct', {txt: ['Lident', '()'], loc: noLoc}, null]),
+  StringLiteral: (env, {value}) => expression(['Pexp_constant', ['Const_string', value, null]]),
+  NumericLiteral: (env, {value}) => expression(['Pexp_constant', ['Const_int', value]]),
   RegexpLiteral: fail,
   BooleanLiteral: (env, e) => {
     return jsByTag.Identifier(env, {name: '' + e.value});
   },
 
-  ExpressionStatement: (env, {expression}) =>
-    statement(env, compile(env, expression))
+  ExpressionStatement: (env, itm) => {
+    let expr = itm.expression;
+    return (potentiallyStructureEval(env, compile(env, expr)))
+  }
   ,
 
   BlockStatement: (env, {body}) => {
@@ -220,18 +224,18 @@ var jsByTag = {
         let normalizedBody = (body[i].type === 'FunctionDeclaration') ?
           functionDeclarationToVariableBinding(body[i]) :
           body[i];
-        res = [
+        res = expression([
           'Pexp_let',
           ['Nonrecursive'],
           normalizedBody.declarations.map(compile.bind(null, env)),
-          expression(res)
-        ]
+          (res)
+        ])
       } else {
-        res = [
+        res = expression([
           'Pexp_sequence',
-          expression(compile(env, body[i])),
-          expression(res)
-        ]
+          (compile(env, body[i])),
+          (res)
+        ])
       }
     }
 
@@ -243,19 +247,21 @@ var jsByTag = {
   WithStatement: fail,
 
   // TODO do some control flow analysis to make this actually be the final
-  // statement in a function
+  // potentiallyStructureEval in a function
   ReturnStatement: (env, {argument}) => compile(env, argument),
   LabeledStatement: fail,
   BreakStatement: fail,
   ContinueStatement: fail,
 
   // TODO handle early return in if statement -- convert to else?
-  IfStatement: (env, {test, consequent, alternate}) => statement(
+  IfStatement: (env, {test, consequent, alternate}) => potentiallyStructureEval(
     env,
-    Pexp_ifthenelse(
-      expression(compile(Env.topLevel(env, false), test)),
-      expression(compile(Env.topLevel(env, false), consequent)),
-      alternate ? expression(compile(Env.topLevel(env, false), alternate)) : null
+    expression(
+      Pexp_ifthenelse(
+        (compile(Env.topLevel(env, false), test)),
+        (compile(Env.topLevel(env, false), consequent)),
+        alternate ? (compile(Env.topLevel(env, false), alternate)) : null
+      )
     )
   ),
   SwitchStatement: fail,
@@ -273,25 +279,25 @@ var jsByTag = {
         argument.type === 'NewExpression' &&
         argument.callee.type === 'Identifier' ?
       variant(env, argument.callee.name, argument.arguments) :
-      expression(compile(env, argument));
-    return [
+      (compile(env, argument));
+    return expression([
       'Pexp_apply',
       expression(['Pexp_ident', lidentLoc('raise')]),
       [
         ["", thingToRaise]
       ]
-    ];
+    ]);
   },
   TryStatement: fail,
   CatchClause: fail,
   WhileStatement: (env, e) => {
-    return statement(
+    return potentiallyStructureEval(
       env,
-      [
+      expression([
         'Pexp_while',
-        expression(compile(Env.topLevel(env, false), e.test)),
-        expression(compile(Env.topLevel(env, false), e.body))
-      ]
+        (compile(Env.topLevel(env, false), e.test)),
+        (compile(Env.topLevel(env, false), e.body))
+      ])
     );
   },
   DoWhileStatement: fail,
@@ -308,25 +314,25 @@ var jsByTag = {
     return compile(env, fakeVariableDecl);
   },
 
-  VariableDeclaration: (env, {declarations}) => env.isTopLevel ? [
+  VariableDeclaration: (env, {declarations}) => env.isTopLevel ? ([
     'Pstr_value',
     ['Nonrecursive'],
     declarations.map(compile.bind(null, Env.topLevel(env, false))),
-  ] : [
+  ]) : expression([
     'Pexp_let',
     ['Nonrecursive'],
     declarations.map(compile.bind(null, Env.topLevel(env, false))),
-    expression(expNull)
-  ],
+    (expNull)
+  ]),
   VariableDeclarator: (env, {id, init, kind}) => ({
     pvb_pat: {
       ppat_desc: ['Ppat_var', {txt: id.name, loc: noLoc}],
       ppat_loc: noLoc,
       ppat_attributes: [],
     },
-    pvb_expr: expression(
+    pvb_expr: (
       init ? compile(Env.topLevel(env, false), init) :
-      ['Pexp_construct', {txt: ['Lident', 'None'], loc: noLoc}, null]
+      expression(['Pexp_construct', {txt: ['Lident', 'None'], loc: noLoc}, null])
     ),
     pvb_attributes: [],
     pvb_loc: noLoc
@@ -350,14 +356,14 @@ var jsByTag = {
         'unsupportedProperty';
       return [
         lidentLoc(keyName),
-        expression(compile(Env.topLevel(env, false), property.value))
+        (compile(Env.topLevel(env, false), property.value))
       ];
     };
-    return [
+    return expression([
       'Pexp_record',
       e.properties.map(propertyToRecordField),
       null /* The "with" portion */
-    ];
+    ]);
   },
   ObjectMember: fail,
   ObjectProperty: fail,
@@ -366,14 +372,14 @@ var jsByTag = {
   SpreadProperty: fail,
   FunctionExpression: functionToReason,
   UnaryExpression: (env, e) => {
-    return [
+    return expression([
       'Pexp_apply',
       expression([
         'Pexp_ident',
         lidentLoc(jsOperatorToMlAst(e.operator))
       ]),
       applicationArgs(Env.topLevel(env, false), [e.argument])
-    ];
+    ]);
   },
   UpdateExpression: (env, e) => {
     // x++ becomes x.contents = x.contents + 1
@@ -383,8 +389,8 @@ var jsByTag = {
     if (reasonOperationIdent === null) {
       throw new Error('Cannot determine update identifier');
     }
-    let operand = expression(compile(Env.topLevel(env, false), e.argument));
-    return [
+    let operand = (compile(Env.topLevel(env, false), e.argument));
+    return expression([
       'Pexp_setfield',
       operand,
       lidentLoc('contents'),
@@ -396,7 +402,7 @@ var jsByTag = {
           ["", expression(['Pexp_constant', ['Const_int', 1]])]
         ]
       ])
-    ];
+    ]);
   },
   BinaryExpression: (env, {left, right, operator}) => compile(
     env,
@@ -407,23 +413,23 @@ var jsByTag = {
     }
   ),
   AssignmentExpression: (env, {left, right, operator}) => operator === '=' ?
-  (left.type === 'Identifier' ? [
+  (left.type === 'Identifier' ? expression([
     'Pexp_setfield',
     expression(Pexp_ident(lidentLoc(left.name))),
     lidentLoc('contents'),
-    expression(compile(Env.topLevel(env, false), right)),
-  ] : (left.type === 'MemberExpression' && !left.computed ? [
+    (compile(Env.topLevel(env, false), right)),
+  ]) : (left.type === 'MemberExpression' && !left.computed ? expression([
     'Pexp_setfield',
-    expression(compile(Env.topLevel(env, false), left.object)),
+    (compile(Env.topLevel(env, false), left.object)),
     {txt: ['Lident', left.property.name], loc: noLoc},
-    expression(compile(Env.topLevel(env, false), right)),
-  ] : (left.type === 'MemberExpression' && left.computed) ? [
+    (compile(Env.topLevel(env, false), right)),
+  ]) : (left.type === 'MemberExpression' && left.computed) ? expression([
     /* TODO: Perform basic type inference to determine if this is an array
      * update or a hash table update */
       'Pexp_apply',
       expression(['Pexp_ident', {txt: ['Ldot', ['Lident', 'Array'], 'set'], loc: noLoc}]),
       applicationArgs(Env.topLevel(env, false), [left.object, left.property, right])
-  ] : fail("Cannot assign much"))) : (
+  ]) : fail("Cannot assign much"))) : (
     compile(
       env,
       {
@@ -443,25 +449,25 @@ var jsByTag = {
     }
   ),
   SpreadElement: fail,
-  MemberExpression: (env, {object, property, computed}) => computed ? [
+  MemberExpression: (env, {object, property, computed}) => computed ? expression([
     'Pexp_apply',
     expression([
       'Pexp_ident',
       {txt: ['Ldot', ['Lident', 'Array'], 'get'], loc: noLoc}
     ]),
     applicationArgs(Env.topLevel(env, false), [object, property])
-  ] : [
+  ]) : expression([
     'Pexp_field',
-    expression(compile(Env.topLevel(env, false), object)),
+    (compile(Env.topLevel(env, false), object)),
     {txt: ['Lident', property.name], loc: noLoc}
-  ],
+  ]),
 
   BindExpression: fail,
 
   ConditionalExpression: (env, e) => {
-    return [
+    return expression([
       'Pexp_match',
-      expression(compile(Env.topLevel(env, false), e.test)),
+      (compile(Env.topLevel(env, false), e.test)),
       [
         {
           "pc_lhs":{
@@ -470,7 +476,7 @@ var jsByTag = {
             "ppat_attributes":[]
           },
           "pc_guard":null,
-          "pc_rhs": expression(compile(Env.topLevel(env, false), e.consequent))
+          "pc_rhs": (compile(Env.topLevel(env, false), e.consequent))
         },
         {
           "pc_lhs":{
@@ -479,17 +485,17 @@ var jsByTag = {
             "ppat_attributes":[]
           },
           "pc_guard":null,
-          "pc_rhs": expression(compile(Env.topLevel(env, false), e.alternate))
+          "pc_rhs": (compile(Env.topLevel(env, false), e.alternate))
         }
       ]
-    ]
+    ])
   },
 
-  CallExpression: (env, {callee, arguments}) => [
+  CallExpression: (env, {callee, arguments}) => expression([
     'Pexp_apply',
-    expression(compile(Env.topLevel(env, false), callee)),
-    arguments.length > 0 ? applicationArgs(Env.topLevel(env, false), arguments) : [["", expression(unit)]]
-  ],
+    (compile(Env.topLevel(env, false), callee)),
+    arguments.length > 0 ? applicationArgs(Env.topLevel(env, false), arguments) : [["", (unit)]]
+  ]),
 
   NewExpression: (env, e) => {
     let calleeName =
@@ -497,14 +503,14 @@ var jsByTag = {
         'Identifier' ? e.callee.name.charAt(0).toLowerCase() +
         e.callee.name.substr(1) :
       'todoCannotSupportClassesThatAreNotIdentifiers';
-    return [
+    return expression([
       'Pexp_apply',
       expression([
         'Pexp_new',
         {txt: ['Lident', calleeName], loc: noLoc}
       ]),
       applicationArgs(Env.topLevel(env, false), e.arguments)
-    ];
+    ]);
   },
   SequenceExpression: fail,
   TemplateLiteral: fail,
@@ -529,11 +535,10 @@ var jsByTag = {
 
 }
 
-let result = (env, item) => {
-};
-
-
 function compile(env, item) {
+  if (!item) {
+    throw new Error ('Item is not truthy ' + JSON.stringify(item));
+  }
   if (!jsByTag[item.type] || typeof jsByTag[item.type] !== 'function') {
     console.log('Unknown type', item.type)
   }
