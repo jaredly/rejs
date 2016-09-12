@@ -5,7 +5,16 @@ let fail = null;
 let arraysAsLists = true;
 
 
+let List = {
+  create: () => null,
+  cons: (hd, tl) => ({hd: hd, tl: tl})
+};
+
 let Env = {
+  init: () => ({
+    isTopLevel: true,
+    typeEnv: List.create()
+  }),
   topLevel: (env, isTopLevel) => {
     var next = {};
     var keys = Object.keys(env);
@@ -21,19 +30,16 @@ var lidentLoc = (name) => {
   return {txt: ['Lident', name], loc: noLoc};
 };
 
-
 let Pexp_construct = (lidentLoc, optionalExpression) => [
   'Pexp_construct',
   lidentLoc,
   optionalExpression == null ? null : optionalExpression
 ];
 
-
 let Pexp_ident = (lidentLoc) => [
   'Pexp_ident',
   lidentLoc
 ];
-
 
 let Pexp_field = (exprDesc, lidentLoc) => {
   return [
@@ -63,7 +69,7 @@ let cons = (hd, tl) => {
 };
 
 
-let List = {
+let ArrList = {
   length: (lst) => lst.length,
   hd: (lst) => lst[0],
   tl: (lst) => {
@@ -74,10 +80,10 @@ let List = {
 };
 
 let jsArrayToReasonList = (env, lst) => {
-  return (List.length(lst) == 0) ? nil :
+  return (ArrList.length(lst) == 0) ? nil :
     cons(
-      expression(compile(env, List.hd(lst))),
-      expression(jsArrayToReasonList(env, List.tl(lst)))
+      expression(compile(env, ArrList.hd(lst))),
+      expression(jsArrayToReasonList(env, ArrList.tl(lst)))
     );
 };
 
@@ -99,25 +105,23 @@ let onlyIfNotReturned = (e) => {
 function statement(env, body) {
   return env.isTopLevel ? [
     'Pstr_eval',
-    {
-      pexp_desc: body,
-      pexp_loc: noLoc,
-      pexp_attributes: []
-    },
+    expression(body),
     [] // attributes
   ] : body
 }
 
 function funShell(arg, body) {
-  return ['Pexp_fun', '', null, {
-    ppat_desc: arg,
-    ppat_loc: noLoc,
-    ppat_attributes: [],
-  }, {
-    pexp_desc: body,
-    pexp_loc: noLoc,
-    pexp_attributes: [],
-  }]
+  return [
+    'Pexp_fun',
+    '',
+    null,
+    {
+      ppat_desc: arg,
+      ppat_loc: noLoc,
+      ppat_attributes: [],
+    },
+    expression(body)
+  ];
 }
 
 var functionToReason = (env, {body, params}) => {
@@ -165,21 +169,10 @@ var jsOperatorToMlAst = (jsOp) => {
   return jsOperatorToMlMap[jsOp] || jsOp;
 };
 
-var tuple = (env, args) => {
-  return {
-    pexp_desc: [
-      'Pexp_tuple',
-      args.map((arg) => ({
-          pexp_desc: compile(env, arg),
-          pexp_loc: noLoc,
-          pexp_attributes: []
-        })
-      )
-    ],
-    pexp_loc: noLoc,
-    pexp_attributes: []
-  };
-};
+var tuple = (env, args) => expression([
+  'Pexp_tuple',
+  args.map((arg) => expression(compile(env, arg)))
+]);
 
 let expression = (exprDesc) => ({
   pexp_desc: exprDesc,
@@ -189,21 +182,13 @@ let expression = (exprDesc) => ({
 
 var variant = (env, name, args) => {
   var variantName = name.charAt(0).toUpperCase() + name.substr(1);
-  return {
-    pexp_desc: ['Pexp_construct', {txt: ['Lident', variantName], loc: noLoc}, tuple(env, args)],
-    pexp_loc: noLoc,
-    pexp_attributes: []
-  };
+  return expression(['Pexp_construct', {txt: ['Lident', variantName], loc: noLoc}, tuple(env, args)]);
 }
 
 var applicationArgs = (env, args) =>
     args.map(arg => [
       "",
-      {
-        pexp_desc: compile(env, arg),
-        pexp_loc: noLoc,
-        pexp_attributes: []
-      }
+      expression(compile(env, arg))
     ]);
 
 var jsByTag = {
@@ -239,13 +224,13 @@ var jsByTag = {
           'Pexp_let',
           ['Nonrecursive'],
           normalizedBody.declarations.map(compile.bind(null, env)),
-          {pexp_desc: res, pexp_loc: noLoc, pexp_attributes: []},
+          expression(res)
         ]
       } else {
         res = [
           'Pexp_sequence',
-          {pexp_desc: compile(env, body[i]), pexp_loc: noLoc, pexp_attributes: []},
-          {pexp_desc: res, pexp_loc: noLoc, pexp_attributes: []},
+          expression(compile(env, body[i])),
+          expression(res)
         ]
       }
     }
@@ -288,11 +273,7 @@ var jsByTag = {
         argument.type === 'NewExpression' &&
         argument.callee.type === 'Identifier' ?
       variant(env, argument.callee.name, argument.arguments) :
-      {
-        pexp_desc: compile(env, argument),
-        pexp_loc: noLoc,
-        pexp_attributes: []
-      };
+      expression(compile(env, argument));
     return [
       'Pexp_apply',
       expression(['Pexp_ident', lidentLoc('raise')]),
@@ -335,11 +316,7 @@ var jsByTag = {
     'Pexp_let',
     ['Nonrecursive'],
     declarations.map(compile.bind(null, Env.topLevel(env, false))),
-    {
-      pexp_desc: expNull,
-      pexp_loc: noLoc,
-      pexp_attributes: [],
-    }
+    expression(expNull)
   ],
   VariableDeclarator: (env, {id, init, kind}) => ({
     pvb_pat: {
@@ -347,13 +324,10 @@ var jsByTag = {
       ppat_loc: noLoc,
       ppat_attributes: [],
     },
-    pvb_expr: {
-      pexp_desc:
-        init ? compile(Env.topLevel(env, false), init) :
-        ['Pexp_construct', {txt: ['Lident', 'None'], loc: noLoc}, null],
-      pexp_loc: noLoc,
-      pexp_attributes: [],
-    },
+    pvb_expr: expression(
+      init ? compile(Env.topLevel(env, false), init) :
+      ['Pexp_construct', {txt: ['Lident', 'None'], loc: noLoc}, null]
+    ),
     pvb_attributes: [],
     pvb_loc: noLoc
   }),
@@ -437,24 +411,17 @@ var jsByTag = {
     'Pexp_setfield',
     expression(Pexp_ident(lidentLoc(left.name))),
     lidentLoc('contents'),
-    {pexp_desc: compile(Env.topLevel(env, false), right), pexp_loc: noLoc, pexp_attributes: []},
+    expression(compile(Env.topLevel(env, false), right)),
   ] : (left.type === 'MemberExpression' && !left.computed ? [
     'Pexp_setfield',
-    {pexp_desc: compile(Env.topLevel(env, false), left.object), pexp_loc: noLoc, pexp_attributes: []},
+    expression(compile(Env.topLevel(env, false), left.object)),
     {txt: ['Lident', left.property.name], loc: noLoc},
-    {pexp_desc: compile(Env.topLevel(env, false), right), pexp_loc: noLoc, pexp_attributes: []},
+    expression(compile(Env.topLevel(env, false), right)),
   ] : (left.type === 'MemberExpression' && left.computed) ? [
     /* TODO: Perform basic type inference to determine if this is an array
      * update or a hash table update */
       'Pexp_apply',
-      {
-        pexp_desc: [
-          'Pexp_ident',
-          {txt: ['Ldot', ['Lident', 'Array'], 'set'], loc: noLoc}
-        ],
-        pexp_loc: noLoc,
-        pexp_attributes: []
-      },
+      expression(['Pexp_ident', {txt: ['Ldot', ['Lident', 'Array'], 'set'], loc: noLoc}]),
       applicationArgs(Env.topLevel(env, false), [left.object, left.property, right])
   ] : fail("Cannot assign much"))) : (
     compile(
@@ -478,22 +445,14 @@ var jsByTag = {
   SpreadElement: fail,
   MemberExpression: (env, {object, property, computed}) => computed ? [
     'Pexp_apply',
-    {
-      pexp_desc: [
-        'Pexp_ident',
-        {txt: ['Ldot', ['Lident', 'Array'], 'get'], loc: noLoc}
-      ],
-      pexp_loc: noLoc,
-      pexp_attributes: []
-    },
+    expression([
+      'Pexp_ident',
+      {txt: ['Ldot', ['Lident', 'Array'], 'get'], loc: noLoc}
+    ]),
     applicationArgs(Env.topLevel(env, false), [object, property])
   ] : [
     'Pexp_field',
-    {
-      pexp_desc: compile(Env.topLevel(env, false), object),
-      pexp_loc: noLoc,
-      pexp_attributes: [],
-    },
+    expression(compile(Env.topLevel(env, false), object)),
     {txt: ['Lident', property.name], loc: noLoc}
   ],
 
@@ -528,11 +487,7 @@ var jsByTag = {
 
   CallExpression: (env, {callee, arguments}) => [
     'Pexp_apply',
-    {
-      pexp_desc: compile(Env.topLevel(env, false), callee),
-      pexp_loc: noLoc,
-      pexp_attributes: []
-    },
+    expression(compile(Env.topLevel(env, false), callee)),
     arguments.length > 0 ? applicationArgs(Env.topLevel(env, false), arguments) : [["", expression(unit)]]
   ],
 
@@ -544,14 +499,10 @@ var jsByTag = {
       'todoCannotSupportClassesThatAreNotIdentifiers';
     return [
       'Pexp_apply',
-      {
-        pexp_desc: [
-          'Pexp_new',
-          {txt: ['Lident', calleeName], loc: noLoc}
-        ],
-        pexp_loc: noLoc,
-        pexp_attributes: []
-      },
+      expression([
+        'Pexp_new',
+        {txt: ['Lident', calleeName], loc: noLoc}
+      ]),
       applicationArgs(Env.topLevel(env, false), e.arguments)
     ];
   },
