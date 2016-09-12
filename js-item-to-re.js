@@ -7,12 +7,13 @@ let arraysAsLists = true;
 var lidentLoc = (name) => {
   return {txt: ['Lident', name], loc: noLoc};
 };
-let Pexp_construct = (constructorName, optionalExpression) => [
+
+
+let Pexp_construct = (lidentLoc, optionalExpression) => [
   'Pexp_construct',
-  lidentLoc(constructorName),
+  lidentLoc,
   optionalExpression == null ? null : optionalExpression
 ];
-
 
 
 let Pexp_ident = (lidentLoc) => [
@@ -21,14 +22,29 @@ let Pexp_ident = (lidentLoc) => [
 ];
 
 
+let Pexp_field = (exprDesc, lidentLoc) => {
+  return [
+    "Pexp_field",
+    expression(exprDesc),
+    lidentLoc
+  ];
+};
+
+let Pexp_ifthenelse = (test, consequent, alternate) => [
+  'Pexp_ifthenelse',
+  expression(test),
+  expression(consequent),
+  alternate ? expression(alternate) : null,
+]
+
 let Pexp_tuple = (lst) => ['Pexp_tuple', lst];
 
-let nil = Pexp_construct('[]', null);
-let unit = Pexp_construct('()', null);
+let nil = Pexp_construct(lidentLoc('[]'), null);
+let unit = Pexp_construct(lidentLoc('()'), null);
 
 let cons = (hd, tl) => {
   return Pexp_construct(
-    '::',
+    lidentLoc('::'),
     expression(Pexp_tuple([hd, tl]))
   );
 };
@@ -50,6 +66,21 @@ let jsArrayToReasonList = (lst) => {
       expression(jsItemToRe(List.hd(lst))),
       expression(jsArrayToReasonList(List.tl(lst)))
     );
+};
+
+let onlyIfNotReturned = (e) => {
+  return Pexp_ifthenelse(
+    expression([
+      "Pexp_apply",
+      expression(Pexp_ident(lidentLoc(jsOperatorToMlMap("===")))),
+      [
+        ["", expression(["Pexp_field", expression(Pexp_ident(lidentLoc("retVal"))), lidentLoc("contents")])],
+        ["", expression(Pexp_construct(lidentLoc("None"), null))]
+      ]
+    ]),
+    expression(e),
+    expression(Pexp_field(expression(Pexp_ident(lidentLoc("retVal"))), lidentLoc("contents")))
+  );
 };
 
 function statement(body, isTopLevel) {
@@ -230,12 +261,12 @@ var jsByTag = {
   ContinueStatement: fail,
 
   // TODO handle early return in if statement -- convert to else?
-  IfStatement: ({test, consequent, alternate}, isTopLevel) => statement([
-    'Pexp_ifthenelse',
-    expression(jsItemToRe(test)),
-    expression(jsItemToRe(consequent)),
-    alternate ? expression(jsItemToRe(alternate)) : null,
-  ], isTopLevel),
+  IfStatement: ({test, consequent, alternate}, isTopLevel) => statement(
+    Pexp_ifthenelse(
+      expression(jsItemToRe(test)),
+      expression(jsItemToRe(consequent)),
+      alternate ? expression(jsItemToRe(alternate)) : null,
+    ), isTopLevel),
   SwitchStatement: fail,
   SwitchCase: fail,
 
