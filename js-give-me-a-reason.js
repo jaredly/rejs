@@ -4,7 +4,7 @@
 const {noLoc} = require('./consts.js')
 
 var babylon = require('babylon')
-const jsItemToRe = require('./js-item-to-re.js')
+const compile = require('./js-item-to-re.js').compile;
 
 var readStdin = done => {
   if (process.argv.length > 2) {
@@ -33,7 +33,7 @@ function jsToRe(js) {
   let initEnv = {isTopLevel: true};
   return [
     [injectPreludeOpener()].concat(
-      js.program.body.map(item => ({pstr_desc: jsItemToRe(initEnv, item), pstr_loc: noLoc}))
+      js.program.body.map(item => ({pstr_desc: compile(initEnv, item), pstr_loc: noLoc}))
     ),
     []
   ];

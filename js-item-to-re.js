@@ -8,9 +8,10 @@ let arraysAsLists = true;
 let Env = {
   topLevel: (env, isTopLevel) => {
     var next = {};
-    for(var k in env) {
+    var keys = Object.keys(env);
+    keys.forEach((k) => {
       next[k] = env[k];
-    }
+    });
     next.isTopLevel = !!isTopLevel;
     return next;
   }
@@ -75,7 +76,7 @@ let List = {
 let jsArrayToReasonList = (env, lst) => {
   return (List.length(lst) == 0) ? nil :
     cons(
-      expression(jsItemToRe(env, List.hd(lst))),
+      expression(compile(env, List.hd(lst))),
       expression(jsArrayToReasonList(env, List.tl(lst)))
     );
 };
@@ -120,7 +121,7 @@ function funShell(arg, body) {
 }
 
 var functionToReason = (env, {body, params}) => {
-  let bod = jsItemToRe(env, body);
+  let bod = compile(env, body);
   if (!params.length) {
     return funShell(patNull, bod)
   }
@@ -169,7 +170,7 @@ var tuple = (env, args) => {
     pexp_desc: [
       'Pexp_tuple',
       args.map((arg) => ({
-          pexp_desc: jsItemToRe(env, arg),
+          pexp_desc: compile(env, arg),
           pexp_loc: noLoc,
           pexp_attributes: []
         })
@@ -199,7 +200,7 @@ var applicationArgs = (env, args) =>
     args.map(arg => [
       "",
       {
-        pexp_desc: jsItemToRe(env, arg),
+        pexp_desc: compile(env, arg),
         pexp_loc: noLoc,
         pexp_attributes: []
       }
@@ -223,12 +224,12 @@ var jsByTag = {
   },
 
   ExpressionStatement: (env, {expression}) =>
-    statement(env, jsItemToRe(env, expression))
+    statement(env, compile(env, expression))
   ,
 
   BlockStatement: (env, {body}) => {
     if (!body.length) return expNull;
-    let res = jsItemToRe(env, body[body.length - 1])
+    let res = compile(env, body[body.length - 1])
     for (let i=body.length - 2; i>=0; i--) {
       if (body[i].type === 'VariableDeclaration' || body[i].type === 'FunctionDeclaration') {
         let normalizedBody = (body[i].type === 'FunctionDeclaration') ?
@@ -237,13 +238,13 @@ var jsByTag = {
         res = [
           'Pexp_let',
           ['Nonrecursive'],
-          normalizedBody.declarations.map(jsItemToRe.bind(null, env)),
+          normalizedBody.declarations.map(compile.bind(null, env)),
           {pexp_desc: res, pexp_loc: noLoc, pexp_attributes: []},
         ]
       } else {
         res = [
           'Pexp_sequence',
-          {pexp_desc: jsItemToRe(env, body[i]), pexp_loc: noLoc, pexp_attributes: []},
+          {pexp_desc: compile(env, body[i]), pexp_loc: noLoc, pexp_attributes: []},
           {pexp_desc: res, pexp_loc: noLoc, pexp_attributes: []},
         ]
       }
@@ -258,7 +259,7 @@ var jsByTag = {
 
   // TODO do some control flow analysis to make this actually be the final
   // statement in a function
-  ReturnStatement: (env, {argument}) => jsItemToRe(env, argument),
+  ReturnStatement: (env, {argument}) => compile(env, argument),
   LabeledStatement: fail,
   BreakStatement: fail,
   ContinueStatement: fail,
@@ -267,9 +268,9 @@ var jsByTag = {
   IfStatement: (env, {test, consequent, alternate}) => statement(
     env,
     Pexp_ifthenelse(
-      expression(jsItemToRe(Env.topLevel(env, false), test)),
-      expression(jsItemToRe(Env.topLevel(env, false), consequent)),
-      alternate ? expression(jsItemToRe(Env.topLevel(env, false), alternate)) : null
+      expression(compile(Env.topLevel(env, false), test)),
+      expression(compile(Env.topLevel(env, false), consequent)),
+      alternate ? expression(compile(Env.topLevel(env, false), alternate)) : null
     )
   ),
   SwitchStatement: fail,
@@ -288,7 +289,7 @@ var jsByTag = {
         argument.callee.type === 'Identifier' ?
       variant(env, argument.callee.name, argument.arguments) :
       {
-        pexp_desc: jsItemToRe(env, argument),
+        pexp_desc: compile(env, argument),
         pexp_loc: noLoc,
         pexp_attributes: []
       };
@@ -307,8 +308,8 @@ var jsByTag = {
       env,
       [
         'Pexp_while',
-        expression(jsItemToRe(Env.topLevel(env, false), e.test)),
-        expression(jsItemToRe(Env.topLevel(env, false), e.body))
+        expression(compile(Env.topLevel(env, false), e.test)),
+        expression(compile(Env.topLevel(env, false), e.body))
       ]
     );
   },
@@ -323,17 +324,17 @@ var jsByTag = {
   FunctionDeclaration: (env, e) => {
     let name = e.id.name;
     let fakeVariableDecl = functionDeclarationToVariableBinding(e);
-    return jsItemToRe(env, fakeVariableDecl);
+    return compile(env, fakeVariableDecl);
   },
 
   VariableDeclaration: (env, {declarations}) => env.isTopLevel ? [
     'Pstr_value',
     ['Nonrecursive'],
-    declarations.map(jsItemToRe.bind(null, Env.topLevel(env, false))),
+    declarations.map(compile.bind(null, Env.topLevel(env, false))),
   ] : [
     'Pexp_let',
     ['Nonrecursive'],
-    declarations.map(jsItemToRe.bind(null, Env.topLevel(env, false))),
+    declarations.map(compile.bind(null, Env.topLevel(env, false))),
     {
       pexp_desc: expNull,
       pexp_loc: noLoc,
@@ -348,7 +349,7 @@ var jsByTag = {
     },
     pvb_expr: {
       pexp_desc:
-        init ? jsItemToRe(Env.topLevel(env, false), init) :
+        init ? compile(Env.topLevel(env, false), init) :
         ['Pexp_construct', {txt: ['Lident', 'None'], loc: noLoc}, null],
       pexp_loc: noLoc,
       pexp_attributes: [],
@@ -375,7 +376,7 @@ var jsByTag = {
         'unsupportedProperty';
       return [
         lidentLoc(keyName),
-        expression(jsItemToRe(Env.topLevel(env, false), property.value))
+        expression(compile(Env.topLevel(env, false), property.value))
       ];
     };
     return [
@@ -408,7 +409,7 @@ var jsByTag = {
     if (reasonOperationIdent === null) {
       throw new Error('Cannot determine update identifier');
     }
-    let operand = expression(jsItemToRe(Env.topLevel(env, false), e.argument));
+    let operand = expression(compile(Env.topLevel(env, false), e.argument));
     return [
       'Pexp_setfield',
       operand,
@@ -423,7 +424,7 @@ var jsByTag = {
       ])
     ];
   },
-  BinaryExpression: (env, {left, right, operator}) => jsItemToRe(
+  BinaryExpression: (env, {left, right, operator}) => compile(
     env,
     {
       type: 'CallExpression',
@@ -436,12 +437,12 @@ var jsByTag = {
     'Pexp_setfield',
     expression(Pexp_ident(lidentLoc(left.name))),
     lidentLoc('contents'),
-    {pexp_desc: jsItemToRe(Env.topLevel(env, false), right), pexp_loc: noLoc, pexp_attributes: []},
+    {pexp_desc: compile(Env.topLevel(env, false), right), pexp_loc: noLoc, pexp_attributes: []},
   ] : (left.type === 'MemberExpression' && !left.computed ? [
     'Pexp_setfield',
-    {pexp_desc: jsItemToRe(Env.topLevel(env, false), left.object), pexp_loc: noLoc, pexp_attributes: []},
+    {pexp_desc: compile(Env.topLevel(env, false), left.object), pexp_loc: noLoc, pexp_attributes: []},
     {txt: ['Lident', left.property.name], loc: noLoc},
-    {pexp_desc: jsItemToRe(Env.topLevel(env, false), right), pexp_loc: noLoc, pexp_attributes: []},
+    {pexp_desc: compile(Env.topLevel(env, false), right), pexp_loc: noLoc, pexp_attributes: []},
   ] : (left.type === 'MemberExpression' && left.computed) ? [
     /* TODO: Perform basic type inference to determine if this is an array
      * update or a hash table update */
@@ -456,7 +457,7 @@ var jsByTag = {
       },
       applicationArgs(Env.topLevel(env, false), [left.object, left.property, right])
   ] : fail("Cannot assign much"))) : (
-    jsItemToRe(
+    compile(
       env,
       {
         type: 'CallExpression',
@@ -466,7 +467,7 @@ var jsByTag = {
     )
   ),
 
-  LogicalExpression: (env, {left, right, operator}) => jsItemToRe(
+  LogicalExpression: (env, {left, right, operator}) => compile(
     env,
     {
       type: 'CallExpression',
@@ -489,7 +490,7 @@ var jsByTag = {
   ] : [
     'Pexp_field',
     {
-      pexp_desc: jsItemToRe(Env.topLevel(env, false), object),
+      pexp_desc: compile(Env.topLevel(env, false), object),
       pexp_loc: noLoc,
       pexp_attributes: [],
     },
@@ -501,7 +502,7 @@ var jsByTag = {
   ConditionalExpression: (env, e) => {
     return [
       'Pexp_match',
-      expression(jsItemToRe(Env.topLevel(env, false), e.test)),
+      expression(compile(Env.topLevel(env, false), e.test)),
       [
         {
           "pc_lhs":{
@@ -510,7 +511,7 @@ var jsByTag = {
             "ppat_attributes":[]
           },
           "pc_guard":null,
-          "pc_rhs": expression(jsItemToRe(Env.topLevel(env, false), e.consequent))
+          "pc_rhs": expression(compile(Env.topLevel(env, false), e.consequent))
         },
         {
           "pc_lhs":{
@@ -519,7 +520,7 @@ var jsByTag = {
             "ppat_attributes":[]
           },
           "pc_guard":null,
-          "pc_rhs": expression(jsItemToRe(Env.topLevel(env, false), e.alternate))
+          "pc_rhs": expression(compile(Env.topLevel(env, false), e.alternate))
         }
       ]
     ]
@@ -528,7 +529,7 @@ var jsByTag = {
   CallExpression: (env, {callee, arguments}) => [
     'Pexp_apply',
     {
-      pexp_desc: jsItemToRe(Env.topLevel(env, false), callee),
+      pexp_desc: compile(Env.topLevel(env, false), callee),
       pexp_loc: noLoc,
       pexp_attributes: []
     },
@@ -577,15 +578,25 @@ var jsByTag = {
 
 }
 
+let result = (env, item) => {
+};
 
-function jsItemToRe(env, item) {
+
+function compile(env, item) {
   if (!jsByTag[item.type] || typeof jsByTag[item.type] !== 'function') {
     console.log('Unknown type', item.type)
   }
   if (!jsByTag[item.type]) {
     throw new Error("No Tag for:" + item.type + JSON.stringify(item))
   }
-  return jsByTag[item.type](env, item)
+  let reasonAst = jsByTag[item.type](env, item);
+  let res = {
+    reasonAst: reasonAst,
+    returnsEarly: false,
+    inferredType: null,
+    refinedEnvironment: env
+  }
+  return res.reasonAst;
 }
 
-module.exports = jsItemToRe;
+exports.compile = compile;
