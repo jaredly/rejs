@@ -4,6 +4,18 @@ let fail = null;
 
 let arraysAsLists = true;
 
+
+let Env = {
+  topLevel: (env, isTopLevel) => {
+    var next = {};
+    for(var k in env) {
+      next[k] = env[k];
+    }
+    next.isTopLevel = !!isTopLevel;
+    return next;
+  }
+};
+
 var lidentLoc = (name) => {
   return {txt: ['Lident', name], loc: noLoc};
 };
@@ -32,9 +44,9 @@ let Pexp_field = (exprDesc, lidentLoc) => {
 
 let Pexp_ifthenelse = (test, consequent, alternate) => [
   'Pexp_ifthenelse',
-  expression(test),
-  expression(consequent),
-  alternate ? expression(alternate) : null,
+  (test),
+  (consequent),
+  alternate ? (alternate) : null,
 ]
 
 let Pexp_tuple = (lst) => ['Pexp_tuple', lst];
@@ -60,11 +72,11 @@ let List = {
   }
 };
 
-let jsArrayToReasonList = (lst) => {
+let jsArrayToReasonList = (env, lst) => {
   return (List.length(lst) == 0) ? nil :
     cons(
-      expression(jsItemToRe(List.hd(lst))),
-      expression(jsArrayToReasonList(List.tl(lst)))
+      expression(jsItemToRe(env, List.hd(lst))),
+      expression(jsArrayToReasonList(env, List.tl(lst)))
     );
 };
 
@@ -83,8 +95,8 @@ let onlyIfNotReturned = (e) => {
   );
 };
 
-function statement(body, isTopLevel) {
-  return isTopLevel ? [
+function statement(env, body) {
+  return env.isTopLevel ? [
     'Pstr_eval',
     {
       pexp_desc: body,
@@ -107,8 +119,8 @@ function funShell(arg, body) {
   }]
 }
 
-var functionToReason = ({body, params}) => {
-  let bod = jsItemToRe(body);
+var functionToReason = (env, {body, params}) => {
+  let bod = jsItemToRe(env, body);
   if (!params.length) {
     return funShell(patNull, bod)
   }
@@ -152,12 +164,12 @@ var jsOperatorToMlAst = (jsOp) => {
   return jsOperatorToMlMap[jsOp] || jsOp;
 };
 
-var tuple = (args) => {
+var tuple = (env, args) => {
   return {
     pexp_desc: [
       'Pexp_tuple',
       args.map((arg) => ({
-          pexp_desc: jsItemToRe(arg),
+          pexp_desc: jsItemToRe(env, arg),
           pexp_loc: noLoc,
           pexp_attributes: []
         })
@@ -168,42 +180,33 @@ var tuple = (args) => {
   };
 };
 
-var explictArityify = (tuple) => {
-  return {
-    pexp_desc: tuple.pexp_desc,
-    pexp_loc: tuple.pexp_loc,
-    pexp_attributes: tuple.pexp_attributes.concat([])
-  };
-};
-
-
 let expression = (exprDesc) => ({
   pexp_desc: exprDesc,
   pexp_loc: noLoc,
   pexp_attributes: []
 });
 
-var variant = (name, args) => {
+var variant = (env, name, args) => {
   var variantName = name.charAt(0).toUpperCase() + name.substr(1);
   return {
-    pexp_desc: ['Pexp_construct', {txt: ['Lident', variantName], loc: noLoc}, tuple(args)],
+    pexp_desc: ['Pexp_construct', {txt: ['Lident', variantName], loc: noLoc}, tuple(env, args)],
     pexp_loc: noLoc,
     pexp_attributes: []
   };
 }
 
-var applicationArgs = (args) =>
+var applicationArgs = (env, args) =>
     args.map(arg => [
       "",
       {
-        pexp_desc: jsItemToRe(arg),
+        pexp_desc: jsItemToRe(env, arg),
         pexp_loc: noLoc,
         pexp_attributes: []
       }
     ]);
 
 var jsByTag = {
-  Identifier: ({name}) => [
+  Identifier: (env, {name}) => [
     'Pexp_ident',
     {
       txt: ['Lident', name],
@@ -211,21 +214,21 @@ var jsByTag = {
     }
   ],
 
-  NullLiteral: () => ['Pexp_construct', {txt: ['Lident', '()'], loc: noLoc}, null],
-  StringLiteral: ({value}) => ['Pexp_constant', ['Const_string', value, null]],
-  NumericLiteral: ({value}) => ['Pexp_constant', ['Const_int', value]],
+  NullLiteral: (env) => ['Pexp_construct', {txt: ['Lident', '()'], loc: noLoc}, null],
+  StringLiteral: (env, {value}) => ['Pexp_constant', ['Const_string', value, null]],
+  NumericLiteral: (env, {value}) => ['Pexp_constant', ['Const_int', value]],
   RegexpLiteral: fail,
-  BooleanLiteral: (e) => {
-    return jsByTag.Identifier({name: '' + e.value});
+  BooleanLiteral: (env, e) => {
+    return jsByTag.Identifier(env, {name: '' + e.value});
   },
 
-  ExpressionStatement: ({expression}, isTopLevel) =>
-    statement(jsItemToRe(expression), isTopLevel)
+  ExpressionStatement: (env, {expression}) =>
+    statement(env, jsItemToRe(env, expression))
   ,
 
-  BlockStatement: ({body}) => {
+  BlockStatement: (env, {body}) => {
     if (!body.length) return expNull;
-    let res = jsItemToRe(body[body.length - 1])
+    let res = jsItemToRe(env, body[body.length - 1])
     for (let i=body.length - 2; i>=0; i--) {
       if (body[i].type === 'VariableDeclaration' || body[i].type === 'FunctionDeclaration') {
         let normalizedBody = (body[i].type === 'FunctionDeclaration') ?
@@ -234,13 +237,13 @@ var jsByTag = {
         res = [
           'Pexp_let',
           ['Nonrecursive'],
-          normalizedBody.declarations.map(jsItemToRe),
+          normalizedBody.declarations.map(jsItemToRe.bind(null, env)),
           {pexp_desc: res, pexp_loc: noLoc, pexp_attributes: []},
         ]
       } else {
         res = [
           'Pexp_sequence',
-          {pexp_desc: jsItemToRe(body[i]), pexp_loc: noLoc, pexp_attributes: []},
+          {pexp_desc: jsItemToRe(env, body[i]), pexp_loc: noLoc, pexp_attributes: []},
           {pexp_desc: res, pexp_loc: noLoc, pexp_attributes: []},
         ]
       }
@@ -255,18 +258,20 @@ var jsByTag = {
 
   // TODO do some control flow analysis to make this actually be the final
   // statement in a function
-  ReturnStatement: ({argument}) => jsItemToRe(argument),
+  ReturnStatement: (env, {argument}) => jsItemToRe(env, argument),
   LabeledStatement: fail,
   BreakStatement: fail,
   ContinueStatement: fail,
 
   // TODO handle early return in if statement -- convert to else?
-  IfStatement: ({test, consequent, alternate}, isTopLevel) => statement(
+  IfStatement: (env, {test, consequent, alternate}) => statement(
+    env,
     Pexp_ifthenelse(
-      expression(jsItemToRe(test)),
-      expression(jsItemToRe(consequent)),
-      alternate ? expression(jsItemToRe(alternate)) : null,
-    ), isTopLevel),
+      expression(jsItemToRe(Env.topLevel(env, false), test)),
+      expression(jsItemToRe(Env.topLevel(env, false), consequent)),
+      alternate ? expression(jsItemToRe(Env.topLevel(env, false), alternate)) : null
+    )
+  ),
   SwitchStatement: fail,
   SwitchCase: fail,
 
@@ -277,13 +282,13 @@ var jsByTag = {
    *
    * Because chances are you have to turn the X into an exception anyway.
    */
-  ThrowStatement: ({argument}) => {
+  ThrowStatement: (env, {argument}) => {
     let thingToRaise =
         argument.type === 'NewExpression' &&
         argument.callee.type === 'Identifier' ?
-      variant(argument.callee.name, argument.arguments) :
+      variant(env, argument.callee.name, argument.arguments) :
       {
-        pexp_desc: jsItemToRe(argument),
+        pexp_desc: jsItemToRe(env, argument),
         pexp_loc: noLoc,
         pexp_attributes: []
       };
@@ -297,12 +302,15 @@ var jsByTag = {
   },
   TryStatement: fail,
   CatchClause: fail,
-  WhileStatement: (e, isTopLevel) => {
-    return statement([
-      'Pexp_while',
-      expression(jsItemToRe(e.test)),
-      expression(jsItemToRe(e.body))
-    ], isTopLevel);
+  WhileStatement: (env, e) => {
+    return statement(
+      env,
+      [
+        'Pexp_while',
+        expression(jsItemToRe(Env.topLevel(env, false), e.test)),
+        expression(jsItemToRe(Env.topLevel(env, false), e.body))
+      ]
+    );
   },
   DoWhileStatement: fail,
   ForStatement: fail,
@@ -312,27 +320,27 @@ var jsByTag = {
   /**
    * TODO: Definitely make these recursive.
    */
-  FunctionDeclaration: (e, isTopLevel) => {
+  FunctionDeclaration: (env, e) => {
     let name = e.id.name;
     let fakeVariableDecl = functionDeclarationToVariableBinding(e);
-    return jsItemToRe(fakeVariableDecl, isTopLevel);
+    return jsItemToRe(env, fakeVariableDecl);
   },
 
-  VariableDeclaration: ({declarations}, isTopLevel) => isTopLevel ? [
+  VariableDeclaration: (env, {declarations}) => env.isTopLevel ? [
     'Pstr_value',
     ['Nonrecursive'],
-    declarations.map(jsItemToRe),
+    declarations.map(jsItemToRe.bind(null, Env.topLevel(env, false))),
   ] : [
     'Pexp_let',
     ['Nonrecursive'],
-    declarations.map(jsItemToRe),
+    declarations.map(jsItemToRe.bind(null, Env.topLevel(env, false))),
     {
       pexp_desc: expNull,
       pexp_loc: noLoc,
       pexp_attributes: [],
     }
   ],
-  VariableDeclarator: ({id, init, kind}) => ({
+  VariableDeclarator: (env, {id, init, kind}) => ({
     pvb_pat: {
       ppat_desc: ['Ppat_var', {txt: id.name, loc: noLoc}],
       ppat_loc: noLoc,
@@ -340,7 +348,7 @@ var jsByTag = {
     },
     pvb_expr: {
       pexp_desc:
-        init ? jsItemToRe(init) :
+        init ? jsItemToRe(Env.topLevel(env, false), init) :
         ['Pexp_construct', {txt: ['Lident', 'None'], loc: noLoc}, null],
       pexp_loc: noLoc,
       pexp_attributes: [],
@@ -359,15 +367,15 @@ var jsByTag = {
   YieldExpression: fail,
   AwaitExpression: fail,
 
-  ArrayExpression: e => jsArrayToReasonList(e.elements),
-  ObjectExpression: e => {
+  ArrayExpression: (env, e) => jsArrayToReasonList(Env.topLevel(env, false), e.elements),
+  ObjectExpression: (env, e) => {
     let propertyToRecordField = (property) => {
       let keyName = property.key.type === 'Identifier' ?
         property.key.name :
         'unsupportedProperty';
       return [
         lidentLoc(keyName),
-        expression(jsItemToRe(property.value))
+        expression(jsItemToRe(Env.topLevel(env, false), property.value))
       ];
     };
     return [
@@ -382,17 +390,17 @@ var jsByTag = {
   RestProperty: fail,
   SpreadProperty: fail,
   FunctionExpression: functionToReason,
-  UnaryExpression: (e, isTopLevel) => {
+  UnaryExpression: (env, e) => {
     return [
       'Pexp_apply',
       expression([
         'Pexp_ident',
         lidentLoc(jsOperatorToMlAst(e.operator))
       ]),
-      applicationArgs([e.argument])
+      applicationArgs(Env.topLevel(env, false), [e.argument])
     ];
   },
-  UpdateExpression: e => {
+  UpdateExpression: (env, e) => {
     // x++ becomes x.contents = x.contents + 1
     let reasonOperationIdent =
       e.operator === '++' ?  lidentLoc('+') :
@@ -400,7 +408,7 @@ var jsByTag = {
     if (reasonOperationIdent === null) {
       throw new Error('Cannot determine update identifier');
     }
-    let operand = expression(jsItemToRe(e.argument));
+    let operand = expression(jsItemToRe(Env.topLevel(env, false), e.argument));
     return [
       'Pexp_setfield',
       operand,
@@ -415,22 +423,25 @@ var jsByTag = {
       ])
     ];
   },
-  BinaryExpression: ({left, right, operator}) => jsItemToRe({
-    type: 'CallExpression',
-    callee: {type: 'Identifier', name: jsOperatorToMlAst(operator)},
-    arguments: [left, right]
-  }),
-  AssignmentExpression: ({left, right, operator}) => operator === '=' ?
+  BinaryExpression: (env, {left, right, operator}) => jsItemToRe(
+    env,
+    {
+      type: 'CallExpression',
+      callee: {type: 'Identifier', name: jsOperatorToMlAst(operator)},
+      arguments: [left, right]
+    }
+  ),
+  AssignmentExpression: (env, {left, right, operator}) => operator === '=' ?
   (left.type === 'Identifier' ? [
     'Pexp_setfield',
     expression(Pexp_ident(lidentLoc(left.name))),
     lidentLoc('contents'),
-    {pexp_desc: jsItemToRe(right), pexp_loc: noLoc, pexp_attributes: []},
+    {pexp_desc: jsItemToRe(Env.topLevel(env, false), right), pexp_loc: noLoc, pexp_attributes: []},
   ] : (left.type === 'MemberExpression' && !left.computed ? [
     'Pexp_setfield',
-    {pexp_desc: jsItemToRe(left.object), pexp_loc: noLoc, pexp_attributes: []},
+    {pexp_desc: jsItemToRe(Env.topLevel(env, false), left.object), pexp_loc: noLoc, pexp_attributes: []},
     {txt: ['Lident', left.property.name], loc: noLoc},
-    {pexp_desc: jsItemToRe(right), pexp_loc: noLoc, pexp_attributes: []},
+    {pexp_desc: jsItemToRe(Env.topLevel(env, false), right), pexp_loc: noLoc, pexp_attributes: []},
   ] : (left.type === 'MemberExpression' && left.computed) ? [
     /* TODO: Perform basic type inference to determine if this is an array
      * update or a hash table update */
@@ -443,22 +454,28 @@ var jsByTag = {
         pexp_loc: noLoc,
         pexp_attributes: []
       },
-      applicationArgs([left.object, left.property, right])
+      applicationArgs(Env.topLevel(env, false), [left.object, left.property, right])
   ] : fail("Cannot assign much"))) : (
-    jsItemToRe({
-      type: 'CallExpression',
-      callee: {type: 'Identifier', name: operator},
-      arguments: [left, right]
-    })
+    jsItemToRe(
+      env,
+      {
+        type: 'CallExpression',
+        callee: {type: 'Identifier', name: operator},
+        arguments: [left, right]
+      }
+    )
   ),
 
-  LogicalExpression: ({left, right, operator}) => jsItemToRe({
-    type: 'CallExpression',
-    callee: {type: 'Identifier', name: jsOperatorToMlAst(operator)},
-    arguments: [left, right]
-  }),
+  LogicalExpression: (env, {left, right, operator}) => jsItemToRe(
+    env,
+    {
+      type: 'CallExpression',
+      callee: {type: 'Identifier', name: jsOperatorToMlAst(operator)},
+      arguments: [left, right]
+    }
+  ),
   SpreadElement: fail,
-  MemberExpression: ({object, property, computed}) => computed ? [
+  MemberExpression: (env, {object, property, computed}) => computed ? [
     'Pexp_apply',
     {
       pexp_desc: [
@@ -468,11 +485,11 @@ var jsByTag = {
       pexp_loc: noLoc,
       pexp_attributes: []
     },
-    applicationArgs([object, property])
+    applicationArgs(Env.topLevel(env, false), [object, property])
   ] : [
     'Pexp_field',
     {
-      pexp_desc: jsItemToRe(object),
+      pexp_desc: jsItemToRe(Env.topLevel(env, false), object),
       pexp_loc: noLoc,
       pexp_attributes: [],
     },
@@ -481,10 +498,10 @@ var jsByTag = {
 
   BindExpression: fail,
 
-  ConditionalExpression: (e) => {
+  ConditionalExpression: (env, e) => {
     return [
       'Pexp_match',
-      expression(jsItemToRe(e.test)),
+      expression(jsItemToRe(Env.topLevel(env, false), e.test)),
       [
         {
           "pc_lhs":{
@@ -493,7 +510,7 @@ var jsByTag = {
             "ppat_attributes":[]
           },
           "pc_guard":null,
-          "pc_rhs": expression(jsItemToRe(e.consequent))
+          "pc_rhs": expression(jsItemToRe(Env.topLevel(env, false), e.consequent))
         },
         {
           "pc_lhs":{
@@ -502,23 +519,23 @@ var jsByTag = {
             "ppat_attributes":[]
           },
           "pc_guard":null,
-          "pc_rhs": expression(jsItemToRe(e.alternate))
+          "pc_rhs": expression(jsItemToRe(Env.topLevel(env, false), e.alternate))
         }
       ]
     ]
   },
 
-  CallExpression: ({callee, arguments}) => [
+  CallExpression: (env, {callee, arguments}) => [
     'Pexp_apply',
     {
-      pexp_desc: jsItemToRe(callee),
+      pexp_desc: jsItemToRe(Env.topLevel(env, false), callee),
       pexp_loc: noLoc,
       pexp_attributes: []
     },
-    arguments.length > 0 ? applicationArgs(arguments) : [["", expression(unit)]]
+    arguments.length > 0 ? applicationArgs(Env.topLevel(env, false), arguments) : [["", expression(unit)]]
   ],
 
-  NewExpression: (e) => {
+  NewExpression: (env, e) => {
     let calleeName =
       e.callee.type ===
         'Identifier' ? e.callee.name.charAt(0).toLowerCase() +
@@ -534,7 +551,7 @@ var jsByTag = {
         pexp_loc: noLoc,
         pexp_attributes: []
       },
-      applicationArgs(e.arguments)
+      applicationArgs(Env.topLevel(env, false), e.arguments)
     ];
   },
   SequenceExpression: fail,
@@ -561,14 +578,14 @@ var jsByTag = {
 }
 
 
-function jsItemToRe(item, isTopLevel) {
+function jsItemToRe(env, item) {
   if (!jsByTag[item.type] || typeof jsByTag[item.type] !== 'function') {
     console.log('Unknown type', item.type)
   }
   if (!jsByTag[item.type]) {
     throw new Error("No Tag for:" + item.type + JSON.stringify(item))
   }
-  return jsByTag[item.type](item, isTopLevel)
+  return jsByTag[item.type](env, item)
 }
 
 module.exports = jsItemToRe;

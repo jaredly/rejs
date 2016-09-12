@@ -29,28 +29,11 @@ function injectPreludeOpener() {
   return {pstr_desc:['Pstr_open',{popen_lid:{txt:['Lident','ReJsPrelude'], loc:noLoc},popen_override:['Fresh'],popen_loc:noLoc,popen_attributes:[]}],pstr_loc:noLoc};
 }
 
-// TODO remove (unused)
-function renderDecl(declarations) {
-  return declarations.map(({id, init, kind}) => ({
-    pvb_pat: {
-      ppat_desc: ['Ppat_var', {txt: id.name, loc: noLoc}],
-      ppat_loc: noLoc,
-      ppat_attributes: [],
-    },
-    pvb_expr: {
-      pexp_desc: jsItemToRe(init),
-      pexp_loc: noLoc,
-      pexp_attributes: [],
-    },
-    pvb_attributes: [],
-    pvb_loc: noLoc
-  }))
-}
-
 function jsToRe(js) {
+  let initEnv = {isTopLevel: true};
   return [
     [injectPreludeOpener()].concat(
-      js.program.body.map(item => ({pstr_desc: jsItemToRe(item, true), pstr_loc: noLoc}))
+      js.program.body.map(item => ({pstr_desc: jsItemToRe(initEnv, item), pstr_loc: noLoc}))
     ),
     []
   ];
