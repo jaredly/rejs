@@ -30,6 +30,10 @@ var lidentLoc = (name) => {
   return {txt: ['Lident', name], loc: noLoc};
 };
 
+var stringLoc = (str) => {
+  return {txt: str, loc: noLoc};
+};
+
 let Pexp_construct = (lidentLoc, optionalExpression) => [
   'Pexp_construct',
   lidentLoc,
@@ -48,6 +52,27 @@ let Pexp_field = (exprDesc, lidentLoc) => {
     lidentLoc
   ];
 };
+
+let Upto = ["Upto"];
+let Downto = ["Downto"];
+let Ppat_var = (stringLoc) => {
+  return ["Ppat_var", stringLoc];
+};
+
+let Pexp_for = (pat, init, end, direction, body) => {
+  return ["Pexp_for", pat, init, end, direction, body]
+};
+
+let createForLoop = (counterName, initExpr, endExpr, direction, bodyExpr) => {
+  return Pexp_for(
+    {"ppat_desc": Ppat_var(stringLoc(counterName)),"ppat_loc":noLoc,"ppat_attributes":[]},
+    initExpr,
+    endExpr,
+    direction,
+    bodyExpr
+  )
+};
+
 
 let expression = (exprDesc) => ({
   pexp_desc: exprDesc,
@@ -109,6 +134,18 @@ let onlyIfNotReturned = (e) => {
     expression(Pexp_field(expression(Pexp_ident(lidentLoc("retVal"))), lidentLoc("contents")))
   ));
 };
+
+let plusOrMinusOne = (plusOrMinusToken, e) => {
+  return expression([
+    "Pexp_apply",
+    expression(Pexp_ident(lidentLoc(plusOrMinusToken))),
+    [
+      ["", e],
+      ["", expression(["Pexp_constant", ["Const_int",1]])]
+    ]
+  ]);
+};
+
 
 function potentiallyStructureEval(env, body) {
   return env.isTopLevel ? [
@@ -301,7 +338,82 @@ var jsByTag = {
     );
   },
   DoWhileStatement: fail,
-  ForStatement: fail,
+  ForStatement: (env, e) => {
+    let init = e.init;
+    let test = e.test;
+    let update = e.update;
+    let identifierAndInit =
+      (init.type === 'VariableDeclaration' && init.declarations.length === 1 && init.declarations[0].type === 'VariableDeclarator') ?
+        {name: init.declarations[0].id.name, init: init.declarations[0].init} :
+      (init.type === 'AssignmentExpression') ?
+        {name: init.left.name, init: init.right} :
+      null;
+    if ((identifierAndInit === null)) {
+      throw new Error("Cannot transform for loop that doesn't conform to simple loop pattern");
+    };
+    let unaryUpdate =
+      identifierAndInit !== null &&
+      update.type === 'UpdateExpression' && update.argument.type === 'Identifier' &&
+        update.argument.name === identifierAndInit.name ? (
+          update.operator === '++' ? '++' :
+          update.operator === '--' ? '--' :
+          null
+        ) : null;
+    let assignmentUpdate =
+      identifierAndInit !== null &&
+      update.type === 'AssignmentExpression' &&
+        update.operator === '=' &&
+        update.left.type === 'Identifier' &&
+        update.left.name === identifierAndInit.name &&
+        update.right.type === 'BinaryExpression' &&
+        update.right.left.type === 'Identifier' &&
+        update.right.left.name === identifierAndInit.name &&
+        update.right.right.type === 'NumericLiteral' &&
+        update.right.right.value === 1 ?
+        (
+          update.right.operator === '+' ? '++' :
+          update.right.operator === '-' ? '--' :
+          null
+        ) : null;
+    let endBoundary =
+      identifierAndInit !== null &&
+      test.type === 'BinaryExpression' &&
+        test.left.type === 'Identifier' && test.left.name === identifierAndInit.name ?
+        {op: test.operator, e: test.right} : null;
+
+    if ((unaryUpdate == null && assignmentUpdate == null) || endBoundary === null) {
+      let str = (unaryUpdate == null) + ' - ' + (assignmentUpdate == null) + ' - ' +  endBoundary === null;
+      throw new Error(assignmentUpdate);
+    }
+    let updateOp = assignmentUpdate || unaryUpdate;
+    let initExpr = compile(Env.topLevel(env, false), identifierAndInit.init);
+    let tentativeEndExpr = compile(Env.topLevel(env, false), endBoundary.e);
+    let endDirectionAndExpression =
+      (endBoundary.op === '<=' && updateOp == '++') ?
+        {dir: Upto, e: tentativeEndExpr} :
+      (endBoundary.op === '<') && updateOp === '++' ?
+        {dir: Upto, e: plusOrMinusOne('-', tentativeEndExpr)} :
+      (endBoundary.op === '>=') && updateOp === '--' ?
+        {dir: Downto, e: tentativeEndExpr} :
+      (endBoundary.op === '>') && updateOp === '--' ?
+        {dir: Downto, e: plusOrMinusOne('+', tentativeEndExpr)}
+       : null;
+    if (endDirectionAndExpression === null) {
+      throw new Error("This for loop is too fancy. Can't compile it.");
+    }
+    return potentiallyStructureEval(
+      env,
+      expression(
+        createForLoop(
+          identifierAndInit.name,
+          initExpr,
+          endDirectionAndExpression.e,
+          endDirectionAndExpression.dir,
+          compile(Env.topLevel(env, false), e.body)
+        )
+      )
+    );
+  },
   ForInStatement: fail,
   ForOfStatement: fail,
 
@@ -540,9 +652,6 @@ function compile(env, item) {
     throw new Error ('Item is not truthy ' + JSON.stringify(item));
   }
   if (!jsByTag[item.type] || typeof jsByTag[item.type] !== 'function') {
-    console.log('Unknown type', item.type)
-  }
-  if (!jsByTag[item.type]) {
     throw new Error("No Tag for:" + item.type + JSON.stringify(item))
   }
   let reasonAst = jsByTag[item.type](env, item);

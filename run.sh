@@ -1,4 +1,4 @@
-./js-give-me-a-reason.js "`cat test.js`"|../Reason/refmt_impl.native -parse json -print re -use-stdin true -is-interface-pp false -assume-explicit-arity true
+cat test.js | ./js-give-me-a-reason.js |../Reason/refmt_impl.native -parse json -print re -use-stdin true -is-interface-pp false -assume-explicit-arity true
 
 
 # How to test the structure of various Reason syntax:
