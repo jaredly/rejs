@@ -1,4 +1,6 @@
 {
+  "name": "rejs",
+  "version": "0.0.1",
   "exportedEnvVars": {
     "JS2RE": {
       "global": true,
