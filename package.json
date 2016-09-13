@@ -1,5 +1,14 @@
 {
+  "exportedEnvVars": {
+    "JS2RE": {
+      "global": true,
+      "globalCollisionBehavior": "fail",
+      "resolveAsRelativePath": true,
+      "val": "./js-give-me-a-reason.js"
+    }
+  },
   "dependencies": {
-    "babylon": "^6.9.1"
+    "babylon": "^6.9.1",
+    "dependency-env": "https://github.com/npm-ml/dependency-env.git"
   }
 }
