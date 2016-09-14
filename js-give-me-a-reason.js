@@ -6,8 +6,6 @@ const {noLoc} = require('./consts.js')
 var babylon = require('babylon')
 const compile = require('./js-item-to-re.js').compile;
 
-const getStdin = require('get-stdin');
-
 function injectPreludeOpener() {
   return {pstr_desc:['Pstr_open',{popen_lid:{txt:['Lident','ReJsPrelude'], loc:noLoc},popen_override:['Fresh'],popen_loc:noLoc,popen_attributes:[]}],pstr_loc:noLoc};
 }
