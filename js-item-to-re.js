@@ -210,8 +210,18 @@ var jsOperatorToMlMap = {
   '!=': '!='
 };
 
-var jsOperatorToMlAst = (jsOp) => {
-  return jsOperatorToMlMap[jsOp] || jsOp;
+var jsUnaryOperatorToMlMap = {
+  '+': '~+',
+  '-': '~-'
+};
+
+
+var jsOperatorToMlAst = (jsOp, isUnary) => {
+  if (isUnary) {
+    return jsUnaryOperatorToMlMap[jsOp] || jsOp;
+  } else {
+    return jsOperatorToMlMap[jsOp] || jsOp;
+  }
 };
 
 var tuple = (env, args) => expression([
@@ -495,7 +505,7 @@ var jsByTag = {
       'Pexp_apply',
       expression([
         'Pexp_ident',
-        lidentLoc(jsOperatorToMlAst(e.operator))
+        lidentLoc(jsOperatorToMlAst(e.operator, true))
       ]),
       applicationArgs(Env.topLevel(env, false), [e.argument])
     ]);
@@ -527,7 +537,7 @@ var jsByTag = {
     env,
     {
       type: 'CallExpression',
-      callee: {type: 'Identifier', name: jsOperatorToMlAst(operator)},
+      callee: {type: 'Identifier', name: jsOperatorToMlAst(operator, false)},
       arguments: [left, right]
     }
   ),
@@ -563,7 +573,7 @@ var jsByTag = {
     env,
     {
       type: 'CallExpression',
-      callee: {type: 'Identifier', name: jsOperatorToMlAst(operator)},
+      callee: {type: 'Identifier', name: jsOperatorToMlAst(operator, false)},
       arguments: [left, right]
     }
   ),
