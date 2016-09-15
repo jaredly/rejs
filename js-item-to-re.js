@@ -241,7 +241,14 @@ var jsByTag = {
 
   NullLiteral: (env) => expression(['Pexp_construct', {txt: ['Lident', '()'], loc: noLoc}, null]),
   StringLiteral: (env, {value}) => expression(['Pexp_constant', ['Const_string', value, null]]),
-  NumericLiteral: (env, {value}) => expression(['Pexp_constant', ['Const_int', value]]),
+  NumericLiteral: (env, {value, extra}) => {
+    let raw = extra.raw;
+    if (raw.indexOf('.') !== -1) {
+      return expression(['Pexp_constant', ['Const_float', raw]]);
+    } else {
+      return expression(['Pexp_constant', ['Const_int', value]]);
+    }
+  },
   RegexpLiteral: fail,
   BooleanLiteral: (env, e) => {
     return jsByTag.Identifier(env, {name: '' + e.value});
